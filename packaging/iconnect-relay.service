@@ -1,0 +1,14 @@
+[Unit]
+Description=iconnect input relay (evdev → BT HID)
+After=iconnect-btkbd.service
+Wants=iconnect-btkbd.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/iconnect/iconnect.env
+ExecStart=/usr/bin/python3 -u /opt/iconnect/input/relay.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

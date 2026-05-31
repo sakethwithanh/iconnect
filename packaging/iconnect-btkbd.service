@@ -1,0 +1,15 @@
+[Unit]
+Description=iconnect Bluetooth HID server
+Documentation=file:///usr/share/doc/iconnect/README.md
+After=bluetooth.service network-online.target
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/iconnect/iconnect.env
+ExecStart=/usr/bin/python3 -u /opt/iconnect/input/btkbd_server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

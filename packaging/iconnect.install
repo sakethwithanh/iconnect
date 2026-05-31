@@ -1,0 +1,29 @@
+post_install() {
+  echo
+  echo "==> iconnect installed."
+  echo "    Reloading systemd & restarting bluetooth (drops input plugin)..."
+  systemctl daemon-reload
+  systemctl restart bluetooth.service || true
+  if ! getent group input >/dev/null; then
+    echo "    Warning: 'input' group missing."
+  fi
+  echo
+  echo "Next steps:"
+  echo "  1. Add yourself to the 'input' group (one-time, log out/in after):"
+  echo "       sudo usermod -aG input \$USER"
+  echo "  2. On iPhone: Settings → Accessibility → Touch → AssistiveTouch → ON"
+  echo "  3. Run:  iconnect run    (foreground)"
+  echo "     or:   iconnect enable && iconnect start   (background services)"
+  echo
+}
+
+post_upgrade() {
+  systemctl daemon-reload || true
+  systemctl restart bluetooth.service || true
+  systemctl --user daemon-reload 2>/dev/null || true
+}
+
+post_remove() {
+  systemctl daemon-reload || true
+  systemctl restart bluetooth.service || true
+}

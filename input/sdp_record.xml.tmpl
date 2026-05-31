@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+  BlueZ SDP record for a combo Bluetooth HID device (keyboard + mouse).
+  {DESCRIPTOR_HEX} is filled in at runtime by btkbd_server.py from
+  hid_descriptor.REPORT_DESCRIPTOR.
+-->
+<record>
+  <attribute id="0x0001"><!-- ServiceClassIDList -->
+    <sequence>
+      <uuid value="0x1124"/><!-- HumanInterfaceDeviceService -->
+    </sequence>
+  </attribute>
+
+  <attribute id="0x0004"><!-- ProtocolDescriptorList -->
+    <sequence>
+      <sequence>
+        <uuid value="0x0100"/><!-- L2CAP -->
+        <uint16 value="0x0011"/><!-- PSM 17, HID Control -->
+      </sequence>
+      <sequence>
+        <uuid value="0x0011"/><!-- HIDP -->
+      </sequence>
+    </sequence>
+  </attribute>
+
+  <attribute id="0x0005"><!-- BrowseGroupList -->
+    <sequence><uuid value="0x1002"/></sequence>
+  </attribute>
+
+  <attribute id="0x0006"><!-- LanguageBaseAttributeIDList -->
+    <sequence>
+      <uint16 value="0x656e"/>
+      <uint16 value="0x006a"/>
+      <uint16 value="0x0100"/>
+    </sequence>
+  </attribute>
+
+  <attribute id="0x0009"><!-- BluetoothProfileDescriptorList -->
+    <sequence>
+      <sequence>
+        <uuid value="0x1124"/>
+        <uint16 value="0x0101"/>
+      </sequence>
+    </sequence>
+  </attribute>
+
+  <attribute id="0x000d"><!-- AdditionalProtocolDescriptorLists -->
+    <sequence>
+      <sequence>
+        <sequence>
+          <uuid value="0x0100"/>
+          <uint16 value="0x0013"/><!-- PSM 19, HID Interrupt -->
+        </sequence>
+        <sequence>
+          <uuid value="0x0011"/>
+        </sequence>
+      </sequence>
+    </sequence>
+  </attribute>
+
+  <attribute id="0x0100"><text value="iconnect Bluetooth HID"/></attribute>
+  <attribute id="0x0101"><text value="iconnect virtual keyboard/mouse"/></attribute>
+  <attribute id="0x0102"><text value="iconnect"/></attribute>
+
+  <attribute id="0x0200"><!-- HIDDeviceReleaseNumber -->
+    <uint16 value="0x0100"/>
+  </attribute>
+  <attribute id="0x0201"><!-- HIDParserVersion -->
+    <uint16 value="0x0111"/>
+  </attribute>
+  <attribute id="0x0202"><!-- HIDDeviceSubclass: combo keyboard+pointing 0xC0 -->
+    <uint8 value="0xc0"/>
+  </attribute>
+  <attribute id="0x0203"><!-- HIDCountryCode -->
+    <uint8 value="0x00"/>
+  </attribute>
+  <attribute id="0x0204"><!-- HIDVirtualCable -->
+    <boolean value="false"/>
+  </attribute>
+  <attribute id="0x0205"><!-- HIDReconnectInitiate -->
+    <boolean value="true"/>
+  </attribute>
+
+  <attribute id="0x0206"><!-- HIDDescriptorList -->
+    <sequence>
+      <sequence>
+        <uint8 value="0x22"/><!-- descriptor type: Report -->
+        <text encoding="hex" value="{DESCRIPTOR_HEX}"/>
+      </sequence>
+    </sequence>
+  </attribute>
+
+  <attribute id="0x0207"><!-- HIDLANGIDBaseList -->
+    <sequence>
+      <sequence>
+        <uint16 value="0x0409"/>
+        <uint16 value="0x0100"/>
+      </sequence>
+    </sequence>
+  </attribute>
+
+  <attribute id="0x020b"><!-- HIDProfileVersion -->
+    <uint16 value="0x0100"/>
+  </attribute>
+  <attribute id="0x020c"><!-- HIDSupervisionTimeout -->
+    <uint16 value="0x0c80"/>
+  </attribute>
+  <attribute id="0x020d"><!-- HIDNormallyConnectable -->
+    <boolean value="true"/>
+  </attribute>
+  <attribute id="0x020e"><!-- HIDBootDevice -->
+    <boolean value="true"/>
+  </attribute>
+</record>

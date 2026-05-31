@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=iconnect
+GenericName=iPhone Bridge
+Comment=Mirror and control your iPhone from Linux
+Exec=iconnect run
+TryExec=iconnect
+Icon=phone
+Terminal=true
+Categories=Network;Utility;RemoteAccess;
+Keywords=iphone;airplay;mirror;bluetooth;mouse;keyboard;
+StartupNotify=false

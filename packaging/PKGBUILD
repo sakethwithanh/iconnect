@@ -1,0 +1,63 @@
+# Maintainer: Saketh <ragirollasaketh@gmail.com>
+pkgname=iconnect
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Mirror and control iPhone from Arch Linux (AirPlay receiver + Bluetooth HID)"
+arch=('any')
+url="local"
+license=('MIT')
+depends=(
+  'python' 'python-dbus' 'python-gobject' 'python-evdev'
+  'bluez' 'bluez-utils' 'bluez-libs'
+  'avahi' 'nss-mdns'
+  'gstreamer' 'gst-plugins-base' 'gst-plugins-good'
+  'gst-plugins-bad' 'gst-plugins-ugly' 'gst-libav'
+)
+optdepends=(
+  'uxplay: AirPlay receiver for screen mirroring'
+  'pipewire-pulse: audio output for AirPlay'
+)
+backup=('etc/iconnect/iconnect.env')
+install=iconnect.install
+
+# Files are taken from the parent project directory.
+source=()
+sha256sums=()
+
+package() {
+  cd "$startdir/.."
+
+  # Core scripts and Python modules under /opt/iconnect.
+  install -dm755 "$pkgdir/opt/iconnect/input" "$pkgdir/opt/iconnect/mirror"
+  install -m644 input/hid_descriptor.py    "$pkgdir/opt/iconnect/input/"
+  install -m644 input/sdp_record.xml.tmpl  "$pkgdir/opt/iconnect/input/"
+  install -m755 input/btkbd_server.py      "$pkgdir/opt/iconnect/input/"
+  install -m755 input/relay.py             "$pkgdir/opt/iconnect/input/"
+  install -m755 mirror/start-uxplay.sh     "$pkgdir/opt/iconnect/mirror/"
+
+  # CLI wrapper.
+  install -Dm755 packaging/iconnect.sh "$pkgdir/usr/bin/iconnect"
+
+  # XDG desktop entry.
+  install -Dm644 packaging/iconnect.desktop \
+    "$pkgdir/usr/share/applications/iconnect.desktop"
+
+  # systemd units.
+  install -Dm644 packaging/iconnect-btkbd.service \
+    "$pkgdir/usr/lib/systemd/system/iconnect-btkbd.service"
+  install -Dm644 packaging/iconnect-mirror.service \
+    "$pkgdir/usr/lib/systemd/user/iconnect-mirror.service"
+  install -Dm644 packaging/iconnect-relay.service \
+    "$pkgdir/usr/lib/systemd/user/iconnect-relay.service"
+
+  # Drop-in to disable the BlueZ input plugin (needed for custom HID profile).
+  install -Dm644 packaging/10-iconnect-noinput.conf \
+    "$pkgdir/usr/lib/systemd/system/bluetooth.service.d/10-iconnect-noinput.conf"
+
+  # Default config.
+  install -Dm644 packaging/iconnect.env "$pkgdir/etc/iconnect/iconnect.env"
+
+  # License + README.
+  install -Dm644 README.md "$pkgdir/usr/share/doc/iconnect/README.md"
+  install -Dm644 docs/pairing.md "$pkgdir/usr/share/doc/iconnect/pairing.md"
+}

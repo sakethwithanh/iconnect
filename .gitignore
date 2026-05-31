@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# makepkg artefacts
+packaging/pkg/
+packaging/src/
+packaging/*.pkg.tar.zst
+packaging/*.tar.gz
+packaging/.SRCINFO
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local config / runtime
+*.log
+/tmp/
+image.png
+"image copy"*.png
+
+# Local-only env overrides
+.env.local
+.claude

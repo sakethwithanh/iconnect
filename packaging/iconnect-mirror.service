@@ -1,0 +1,13 @@
+[Unit]
+Description=iconnect AirPlay receiver (uxplay)
+After=network-online.target avahi-daemon.service pipewire.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/iconnect/iconnect.env
+ExecStart=/opt/iconnect/mirror/start-uxplay.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

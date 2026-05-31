@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=iconnect
+GenericName=iPhone Bridge
+Comment=Toggle iconnect on/off (panel + tray icon)
+Exec=python3 /home/saketh/Projects/Saketh-dev/iconnect/gui/iconnect_gui.py
+TryExec=python3
+Icon=phone
+Terminal=false
+Categories=Network;Utility;RemoteAccess;
+Keywords=iphone;airplay;mirror;bluetooth;
+StartupNotify=false
+SingleMainWindow=true
