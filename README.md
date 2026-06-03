@@ -68,7 +68,7 @@ Tested on:
 ### Method 1 — pacman package (recommended)
 
 ```bash
-git clone https://github.com/<your-username>/iconnect.git
+git clone https://github.com/sakethwithanh/iconnect.git
 cd iconnect/packaging
 makepkg -si
 ```
@@ -97,7 +97,7 @@ yay -S uxplay   # or paru -S uxplay
 For developers or non-pacman users:
 
 ```bash
-git clone https://github.com/<your-username>/iconnect.git
+git clone https://github.com/sakethwithanh/iconnect.git
 cd iconnect
 ./install.sh        # installs system deps via pacman
 ./install-dev.sh    # wires desktop launcher + systemd user units to this checkout
