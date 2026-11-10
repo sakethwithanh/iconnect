@@ -80,6 +80,11 @@ makepkg -si
 - Drop a bluetoothd override that disables BlueZ's built-in input plugin (needed for our custom HID profile to register).
 - Install the tray-app .desktop launcher.
 
+Before starting the system service, set `ICONNECT_USER` in
+`/etc/iconnect/iconnect.env` to your actual non-root login name. The package
+ships without a selected user. Missing or invalid users and socket setup errors
+stop startup; they never make the socket accessible to everyone.
+
 Then add yourself to the `input` group (one-time, requires re-login):
 
 ```bash
@@ -91,6 +96,29 @@ sudo usermod -aG input "$USER"
 ```bash
 yay -S uxplay   # or paru -S uxplay
 ```
+
+### Upgrading an existing install
+
+The local-transport security fixes are packaged as **0.1.0-2**. Build and install
+that release rather than reusing an older `0.1.0-1` archive. From the updated
+checkout:
+
+```bash
+cd packaging
+makepkg -f -si
+```
+
+Review `/etc/iconnect/iconnect.env` and any `.pacnew` file after upgrading. Set
+`ICONNECT_USER` to the actual non-root controller account and `ICONNECT_DEBUG=0`.
+Stop any foreground instance, then restart both ends of the transport together:
+
+```bash
+sudo systemctl restart iconnect-btkbd.service
+systemctl --user restart iconnect-relay.service
+```
+
+Do not mix an old relay using `/tmp/iconnect-hid.sock` with the updated server
+using `/run/iconnect/hid.sock`. Restart foreground runs with the updated scripts.
 
 ### Method 2 — dev install (no pacman package)
 
@@ -150,10 +178,11 @@ Edit `/etc/iconnect/iconnect.env` (or `~/.config/iconnect/iconnect.env` for dev 
 | `ICONNECT_TP_SCALE` | `0.3` | Touchpad sensitivity multiplier (raw ABS delta × this). |
 | `ICONNECT_RES` | `1920x1080` | AirPlay mirror resolution cap. |
 | `ICONNECT_FPS` | `60` | AirPlay mirror framerate cap. |
-| `ICONNECT_USER` | unset | User who owns `/tmp/iconnect-hid.sock` (locks it 0600). |
+| `ICONNECT_USER` | unset | Required non-root socket owner for the system service. Foreground sudo runs may use `SUDO_USER`. |
+| `ICONNECT_SOCK` | `/run/iconnect/hid.sock` | Relay socket path. Server and relay must match; its directory must be protected from other users. |
 | `ICONNECT_DISCOVERABLE_SECS` | `180` | Time BT adapter is visible to scans after start. Paired iPhone still reconnects after this. |
 | `ICONNECT_IPHONE_MAC` | auto | iPhone's BT MAC for outbound auto-reconnect. Leave blank to auto-discover. |
-| `ICONNECT_DEBUG` | `1` | Per-event tx/rx logs. Set `0` for quiet operation. |
+| `ICONNECT_DEBUG` | `0` | Set `1` for event metadata only. Raw keyboard and mouse reports are never logged. |
 
 ---
 
@@ -172,7 +201,7 @@ Edit `/etc/iconnect/iconnect.env` (or `~/.config/iconnect/iconnect.env` for dev 
 │  consumes the    │   │ PSM 17 control   │
 │  HID Keyboard    │   │ PSM 19 interrupt │
 │  half            │   └────────▲─────────┘
-└──────────────────┘            │ /tmp/iconnect-hid.sock
+└──────────────────┘            │ /run/iconnect/hid.sock
                                 │ (Unix, mode 0600)
                                 │
                        ┌────────┴─────────┐
@@ -209,9 +238,19 @@ The PC announces itself as a Combo HID device (class 0x002540). iOS pairs with J
 
 ## Security notes
 
+The local-transport fixes do **not** complete a Bluetooth security audit. The
+existing profile authentication settings, lack of an explicit incoming-device
+allowlist, and behavior when the reject-agent cannot register need separate
+review. No practical Bluetooth exploit or hardware compatibility result is
+claimed by the local socket tests.
+
 - `btkbd_server.py` runs as **root** (BlueZ L2CAP PSM bind requires it). Read the source — it's ~300 lines, no `exec`/`eval`, no outbound network beyond Bluetooth.
 - The BT adapter is Discoverable for `ICONNECT_DISCOVERABLE_SECS` (default 180 s) after each start. A reject-new-pair BlueZ agent blocks all new pair attempts during and after that window. Your existing paired iPhone still reconnects (it has the LTK).
-- `/tmp/iconnect-hid.sock` is `0600` and owned by `$ICONNECT_USER`. No other local user can inject HID reports.
+- `/run/iconnect/hid.sock` is created as `0600` in a protected service directory and owned by `$ICONNECT_USER`. Each connection is also checked with Linux `SO_PEERCRED`, so changing the socket mode does not authorize another UID. The relay checks that the server runs as root before sending input.
+- The system service requires a valid non-root `ICONNECT_USER`. There is no world-writable fallback. Socket setup completes before Bluetooth configuration; ownership or permission failures stop startup.
+- The selected account and root retain full control. This is a local-user boundary, not isolation between agents or applications running as the same user.
+- Debugging is off by default. Even when enabled, input payloads, keycodes, and pairing passkeys are not logged. Logs from older versions may contain sensitive typed content; review privately before sharing them.
+- Upgrades move the socket from `/tmp/iconnect-hid.sock` to `/run/iconnect/hid.sock`. Restart both the server and relay together. Do not configure the old world-writable `/tmp` directory as the socket's immediate parent. Custom paths must use service/root-owned directories without symlink components or writable ancestors (a root-owned sticky ancestor is allowed).
 - Pair is Just-Works (no PIN). On a single-user laptop in a non-hostile environment this is fine; in a coffee-shop threat model, set `ICONNECT_DISCOVERABLE_SECS=10` and the agent rejects new pairs after that.
 
 ---
@@ -227,7 +266,37 @@ The PC announces itself as a Combo HID device (class 0x002540). iOS pairs with J
 
 ## Contributing
 
-Open issues with full logs (`journalctl --user -u iconnect-relay.service -n 200`). PRs welcome — keep the codebase dependency-light (no heavy frameworks), and document any new env var in this README's table.
+Open issues with relevant, reviewed logs (`journalctl --user -u iconnect-relay.service -n 200`). Older releases logged raw keyboard reports; never post those logs without removing sensitive input. PRs welcome — keep the codebase dependency-light (no heavy frameworks), and document any new env var in this README's table.
+
+### Local security regression tests
+
+```bash
+python3 -B -m unittest discover -s tests -v
+```
+
+Tests use temporary Unix sockets and mocked Bluetooth adapters. They do not
+start services, pair devices, capture keyboard input, or install dependencies.
+BlueZ adapter tests are skipped when Python D-Bus/GObject bindings are missing.
+Real phone pairing, input delivery, and packaging installation still require
+separate hardware testing.
+
+An additional opt-in Linux integration check exercises a real root server and
+two existing non-root client identities. Review the script first, then run:
+
+```bash
+sudo /usr/bin/python3 -B tests/privileged_relay_check.py --user "$USER" --denied-user nobody
+```
+
+Use normal Python (not `-O`) and keep `-B` to avoid root-owned bytecode caches.
+The check does not create accounts. It uses a newly created temporary Unix socket,
+synthetic all-keys-released bytes, and a fake Bluetooth sink. It verifies mode
+`0600`, then briefly changes only that disposable socket to `0666` to confirm
+kernel peer-UID authorization still rejects the other account. It has a 30-second
+time limit, removes the temporary directory, and never starts Bluetooth, accesses
+input devices, installs a package, or changes system settings. The default denied
+account must exist; use `--denied-user` to select another existing non-root account
+if `nobody` is unavailable.
+
 
 ---
 

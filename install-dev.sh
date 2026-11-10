@@ -36,6 +36,7 @@ log "Wrote $APP_DIR/iconnect.desktop (terminal: $TERM_BIN)"
 # 2. Default env file the user can edit.
 if [[ ! -f "$ENV_FILE" ]]; then
   cp "$PROJECT/packaging/iconnect.env" "$ENV_FILE"
+  printf '\nICONNECT_USER=%s\n' "$(id -un)" >> "$ENV_FILE"
   log "Wrote default config $ENV_FILE"
 fi
 
@@ -83,6 +84,9 @@ Requires=bluetooth.service
 [Service]
 Type=simple
 EnvironmentFile=-$ENV_FILE
+RuntimeDirectory=iconnect
+RuntimeDirectoryMode=0755
+UMask=0077
 ExecStart=/usr/bin/python3 -u $PROJECT/input/btkbd_server.py
 Restart=on-failure
 RestartSec=3

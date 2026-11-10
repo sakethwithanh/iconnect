@@ -11,8 +11,9 @@ post_install() {
   echo "Next steps:"
   echo "  1. Add yourself to the 'input' group (one-time, log out/in after):"
   echo "       sudo usermod -aG input \$USER"
-  echo "  2. On iPhone: Settings → Accessibility → Touch → AssistiveTouch → ON"
-  echo "  3. Run:  iconnect run    (foreground)"
+  echo "  2. Set ICONNECT_USER to your login in /etc/iconnect/iconnect.env. Startup refuses an unset/invalid user."
+  echo "  3. On iPhone: Settings → Accessibility → Touch → AssistiveTouch → ON"
+  echo "  4. Run:  iconnect run    (foreground)"
   echo "     or:   iconnect enable && iconnect start   (background services)"
   echo
 }

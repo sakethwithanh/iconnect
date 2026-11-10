@@ -8,14 +8,12 @@ cleanup() {
   printf '\n[iconnect] shutting down...\n'
   jobs -p | xargs -r kill 2>/dev/null || true
   sudo pkill -f "btkbd_server.py" 2>/dev/null || true
-  rm -f "${ICONNECT_SOCK:-/tmp/iconnect-hid.sock}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
 # Kill any stragglers from a prior aborted run so PSM 17/19 + unix sock are free.
 sudo pkill -f "btkbd_server.py" 2>/dev/null || true
 pkill -f "uxplay" 2>/dev/null || true
-rm -f "${ICONNECT_SOCK:-/tmp/iconnect-hid.sock}" 2>/dev/null || true
 sleep 0.5
 
 # 1. AirPlay receiver
@@ -23,10 +21,13 @@ sleep 0.5
 
 # 2. BT HID server (root). Force /usr/bin/python3 so dbus/PyGObject (pacman
 # packages) are found even when a venv is active.
-sudo /usr/bin/python3 "$DIR/input/btkbd_server.py" &
+sudo env ICONNECT_USER="${ICONNECT_USER:-$(id -un)}" \
+      ICONNECT_SOCK="${ICONNECT_SOCK:-/run/iconnect/hid.sock}" \
+      ICONNECT_DEBUG="${ICONNECT_DEBUG:-0}" \
+      /usr/bin/python3 "$DIR/input/btkbd_server.py" &
 
 # Wait for the unix socket to appear before launching relay
-SOCK="${ICONNECT_SOCK:-/tmp/iconnect-hid.sock}"
+SOCK="${ICONNECT_SOCK:-/run/iconnect/hid.sock}"
 for _ in $(seq 1 40); do
   [[ -S "$SOCK" ]] && break
   sleep 0.25

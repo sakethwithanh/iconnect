@@ -7,6 +7,9 @@ Requires=bluetooth.service
 [Service]
 Type=simple
 EnvironmentFile=-/etc/iconnect/iconnect.env
+RuntimeDirectory=iconnect
+RuntimeDirectoryMode=0755
+UMask=0077
 ExecStart=/usr/bin/python3 -u /opt/iconnect/input/btkbd_server.py
 Restart=on-failure
 RestartSec=3

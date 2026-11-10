@@ -32,7 +32,10 @@ case "$cmd" in
   run)
     /usr/bin/python3 -u "$PREFIX/input/relay.py" "$@" &
     RELAY=$!
-    sudo /usr/bin/python3 -u "$PREFIX/input/btkbd_server.py" &
+    sudo env ICONNECT_USER="${ICONNECT_USER:-$(id -un)}" \
+      ICONNECT_SOCK="${ICONNECT_SOCK:-/run/iconnect/hid.sock}" \
+      ICONNECT_DEBUG="${ICONNECT_DEBUG:-0}" \
+      /usr/bin/python3 -u "$PREFIX/input/btkbd_server.py" &
     BTKBD=$!
     "$PREFIX/mirror/start-uxplay.sh" &
     UXPLAY=$!

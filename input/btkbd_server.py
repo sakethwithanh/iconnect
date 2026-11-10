@@ -7,7 +7,7 @@ Responsibilities:
   2. Make adapter Powered/Pairable/Discoverable.
   3. Register a HID SDP record with BlueZ via org.bluez.ProfileManager1.
   4. Listen on L2CAP PSM 17 (control) and 19 (interrupt) for the iPhone.
-  5. Expose a local Unix socket (/tmp/iconnect-hid.sock) where relay.py pushes
+  5. Expose a local Unix socket (/run/iconnect/hid.sock) where relay.py pushes
      HID payloads framed as:
          [1B report_id][payload...]
      This server prepends the 0xA1 (DATA Input) byte and forwards to the
@@ -34,13 +34,14 @@ from gi.repository import GLib
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from hid_descriptor import REPORT_DESCRIPTOR_HEX  # noqa: E402
+from relay_security import DEFAULT_SOCKET, RelaySocket, peer_uid, read_reports, relay_account, log_packet
 
 HID_UUID = "00001124-0000-1000-8000-00805f9b34fb"
 PSM_CTRL = 0x0011
 PSM_INTR = 0x0013
 COD_COMBO_HID = "0x002540"  # peripheral + keyboard + pointing
 ADAPTER_NAME = os.environ.get("ICONNECT_NAME", "iconnect")
-LOCAL_SOCK = os.environ.get("ICONNECT_SOCK", "/tmp/iconnect-hid.sock")
+LOCAL_SOCK = os.environ.get("ICONNECT_SOCK", DEFAULT_SOCKET)
 
 
 def log(msg: str) -> None:
@@ -151,7 +152,7 @@ class RejectAgent(dbus.service.Object):
 
     @dbus.service.method("org.bluez.Agent1", in_signature="ou", out_signature="")
     def RequestConfirmation(self, device, passkey):
-        log(f"Agent.RequestConfirmation({device}, {passkey:06d}) — rejected")
+        log(f"Agent.RequestConfirmation({device}) — rejected")
         self._reject()
 
     @dbus.service.method("org.bluez.Agent1", in_signature="o", out_signature="")
@@ -278,13 +279,11 @@ class L2CAPListener:
         with self._lock:
             sock = self.client_sock
         if sock is None:
-            if os.environ.get("ICONNECT_DEBUG", "1") != "0":
-                log(f"{self.label}: drop (no client) bytes={data.hex()}")
+            log_packet(log, f"{self.label}: drop (no client)", data)
             return False
         try:
             sock.send(data)
-            if os.environ.get("ICONNECT_DEBUG", "1") != "0":
-                log(f"{self.label}: tx {data.hex()}")
+            log_packet(log, f"{self.label}: tx", data)
             return True
         except OSError as e:
             log(f"{self.label}: send failed ({e}); dropping client")
@@ -371,52 +370,40 @@ def reconnect_loop(ctrl: L2CAPListener, intr: L2CAPListener, mac: str) -> None:
                 break  # iPhone offline; try again next tick
 
 
-def relay_unix_socket(intr: L2CAPListener) -> None:
-    """Accepts payloads from relay.py and forwards as HID Input reports."""
-    try:
-        os.unlink(LOCAL_SOCK)
-    except FileNotFoundError:
-        pass
-    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    srv.bind(LOCAL_SOCK)
-    # Restrict socket to one specific user. Order: ICONNECT_USER, then
-    # SUDO_USER, then leave world-writable (single-user laptop default).
-    target_user = os.environ.get("ICONNECT_USER") or os.environ.get("SUDO_USER")
-    if target_user:
-        try:
-            import pwd
-            pw = pwd.getpwnam(target_user)
-            os.chown(LOCAL_SOCK, pw.pw_uid, pw.pw_gid)
-            os.chmod(LOCAL_SOCK, 0o600)
-            log(f"Local relay socket at {LOCAL_SOCK} (owner {target_user}, 0600)")
-        except (KeyError, OSError) as ex:
-            log(f"chown {LOCAL_SOCK} failed: {ex}; falling back to 0666")
-            os.chmod(LOCAL_SOCK, 0o666)
-    else:
-        os.chmod(LOCAL_SOCK, 0o666)
-        log(f"Local relay socket at {LOCAL_SOCK} (mode 0666, set ICONNECT_USER to lock)")
-    srv.listen(4)
-
+def relay_unix_socket(intr: L2CAPListener, srv: socket.socket, allowed_uid: int) -> None:
+    """Authorize kernel peer credentials before accepting any HID payload."""
+    slots = threading.BoundedSemaphore(4)
     while True:
         client, _ = srv.accept()
-        threading.Thread(target=_handle_relay, args=(client, intr), daemon=True).start()
+        try:
+            if peer_uid(client) != allowed_uid:
+                log("Rejected relay peer: unauthorized UID")
+                client.close()
+                continue
+            if not slots.acquire(blocking=False):
+                client.close()
+                continue
+            try:
+                threading.Thread(target=_handle_relay,
+                                 args=(client, intr, slots), daemon=True).start()
+            except BaseException:
+                slots.release()
+                raise
+        except OSError:
+            client.close()
 
 
-def _handle_relay(client: socket.socket, intr: L2CAPListener) -> None:
-    with client:
-        buf = b""
-        while True:
-            chunk = client.recv(4096)
-            if not chunk:
-                return
-            buf += chunk
-            # Frames: 1B len, len bytes payload (len includes report_id)
-            while len(buf) >= 1 and len(buf) >= 1 + buf[0]:
-                n = buf[0]
-                payload = buf[1:1 + n]
-                buf = buf[1 + n:]
-                # Prepend 0xA1 (DATA, Input report) for HID over L2CAP interrupt
+def _handle_relay(client: socket.socket, intr: L2CAPListener, slots=None) -> None:
+    try:
+        with client:
+            for payload in read_reports(client):
+                # Payloads are never logged, including with ICONNECT_DEBUG=1.
                 intr.send(b"\xa1" + payload)
+    except (OSError, ValueError) as exc:
+        log(f"Relay connection closed: {type(exc).__name__}")
+    finally:
+        if slots is not None:
+            slots.release()
 
 
 def main() -> None:
@@ -425,32 +412,36 @@ def main() -> None:
               file=sys.stderr)
         sys.exit(1)
 
-    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-    bus = dbus.SystemBus()
-    configure_adapter(bus)
-    register_reject_agent(bus)
-    register_profile(bus)
+    account = relay_account()
+    with RelaySocket(LOCAL_SOCK, account) as local:
+        log(f"Local relay socket at {LOCAL_SOCK} (owner {account.pw_name}, 0600)")
+        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+        bus = dbus.SystemBus()
+        configure_adapter(bus)
+        register_reject_agent(bus)
+        register_profile(bus)
 
-    ctrl = L2CAPListener(PSM_CTRL, "ctrl", reader=handle_ctrl_message)
-    intr = L2CAPListener(PSM_INTR, "intr")
-    threading.Thread(target=ctrl.accept_loop, daemon=True).start()
-    threading.Thread(target=intr.accept_loop, daemon=True).start()
-    threading.Thread(target=relay_unix_socket, args=(intr,), daemon=True).start()
+        ctrl = L2CAPListener(PSM_CTRL, "ctrl", reader=handle_ctrl_message)
+        intr = L2CAPListener(PSM_INTR, "intr")
+        threading.Thread(target=ctrl.accept_loop, daemon=True).start()
+        threading.Thread(target=intr.accept_loop, daemon=True).start()
+        threading.Thread(target=relay_unix_socket,
+                         args=(intr, local.sock, account.pw_uid), daemon=True).start()
 
-    iphone_mac = os.environ.get("ICONNECT_IPHONE_MAC") or discover_paired(bus)
-    if iphone_mac:
-        log(f"Auto-reconnect target: {iphone_mac}")
-        threading.Thread(
-            target=reconnect_loop, args=(ctrl, intr, iphone_mac), daemon=True
-        ).start()
-    else:
-        log("No paired device found — will only accept incoming from iPhone.")
+        iphone_mac = os.environ.get("ICONNECT_IPHONE_MAC") or discover_paired(bus)
+        if iphone_mac:
+            log(f"Auto-reconnect target: {iphone_mac}")
+            threading.Thread(
+                target=reconnect_loop, args=(ctrl, intr, iphone_mac), daemon=True
+            ).start()
+        else:
+            log("No paired device found — will only accept incoming from iPhone.")
 
-    loop = GLib.MainLoop()
-    signal.signal(signal.SIGINT, lambda *_: loop.quit())
-    signal.signal(signal.SIGTERM, lambda *_: loop.quit())
-    log("Ready. Pair iPhone from Settings → Bluetooth → 'iconnect'.")
-    loop.run()
+        loop = GLib.MainLoop()
+        signal.signal(signal.SIGINT, lambda *_: loop.quit())
+        signal.signal(signal.SIGTERM, lambda *_: loop.quit())
+        log("Ready. Pair iPhone from Settings → Bluetooth → 'iconnect'.")
+        loop.run()
 
 
 if __name__ == "__main__":
