@@ -27,8 +27,9 @@ from evdev import ecodes as e
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from hid_descriptor import kbd_report, mouse_report  # noqa: E402
+from relay_security import DEFAULT_SOCKET, peer_uid, log_packet
 
-SOCK_PATH = os.environ.get("ICONNECT_SOCK", "/tmp/iconnect-hid.sock")
+SOCK_PATH = os.environ.get("ICONNECT_SOCK", DEFAULT_SOCKET)
 
 # Linux KEY_* → HID Usage ID (HID Keyboard/Keypad page 0x07).
 KEY_TO_HID: dict[int, int] = {
@@ -106,14 +107,20 @@ def find_devices() -> tuple[list[evdev.InputDevice], list[evdev.InputDevice], li
 def connect_server(retries: int = 20, delay: float = 0.5) -> socket.socket:
     last = None
     for _ in range(retries):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(SOCK_PATH)
+            if peer_uid(s) != 0:
+                raise PermissionError("Refusing non-root HID server")
             log(f"Connected to {SOCK_PATH}")
             return s
         except (FileNotFoundError, ConnectionRefusedError) as ex:
+            s.close()
             last = ex
             time.sleep(delay)
+        except BaseException:
+            s.close()
+            raise
     raise RuntimeError(f"Cannot connect to {SOCK_PATH}: {last}")
 
 
@@ -184,8 +191,7 @@ def main() -> None:
         with send_lock:
             try:
                 sock.sendall(buf)
-                if os.environ.get("ICONNECT_DEBUG", "1") != "0":
-                    log(f"tx {buf.hex()}")
+                log_packet(log, "tx", buf)
             except OSError as ex:
                 log(f"server gone: {ex}")
                 os._exit(1)
@@ -198,7 +204,7 @@ def main() -> None:
     log(f"Keyboards: {[d.name for d in keyboards]}")
     log(f"Mice (REL): {[d.name for d in mice]}")
     log(f"Touchpads (ABS): {[d.name for d in touchpads]}")
-    if not touchpads and os.environ.get("ICONNECT_DEBUG", "1") != "0":
+    if not touchpads and os.environ.get("ICONNECT_DEBUG", "0") == "1":
         # Dump devices we didn't classify so the user can spot the touchpad
         # path manually with `sudo evtest`.
         chosen = {d.path for d in keyboards + mice + touchpads}

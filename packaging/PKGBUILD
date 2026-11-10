@@ -1,7 +1,7 @@
 # Maintainer: Saketh <ragirollasaketh@gmail.com>
 pkgname=iconnect
 pkgver=0.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Mirror and control iPhone from Arch Linux (AirPlay receiver + Bluetooth HID)"
 arch=('any')
 url="local"
@@ -29,6 +29,7 @@ package() {
 
   # Core scripts and Python modules under /opt/iconnect.
   install -dm755 "$pkgdir/opt/iconnect/input" "$pkgdir/opt/iconnect/mirror"
+  install -m644 input/relay_security.py    "$pkgdir/opt/iconnect/input/"
   install -m644 input/hid_descriptor.py    "$pkgdir/opt/iconnect/input/"
   install -m644 input/sdp_record.xml.tmpl  "$pkgdir/opt/iconnect/input/"
   install -m755 input/btkbd_server.py      "$pkgdir/opt/iconnect/input/"
